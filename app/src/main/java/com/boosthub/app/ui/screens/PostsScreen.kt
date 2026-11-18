@@ -1,10 +1,10 @@
 package com.boosthub.app.ui.screens
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -12,12 +12,13 @@ import com.boosthub.app.data.Ai
 import com.boosthub.app.data.MetaApi
 import com.boosthub.app.data.Store
 import com.boosthub.app.ui.components.*
+import com.boosthub.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun PostsScreen(modifier: Modifier = Modifier) {
+fun PostsScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     val ctx = LocalContext.current
     val s = remember { Store(ctx) }
     val scope = rememberCoroutineScope()
@@ -25,7 +26,7 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     var hours by remember { mutableStateOf("") }
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var copy by remember { mutableStateOf("") }
+    var adCopy by remember { mutableStateOf("") }
     var posts by remember { mutableStateOf<List<MetaApi.Post>>(emptyList()) }
     var target by remember { mutableStateOf<MetaApi.Post?>(null) }
     var budget by remember { mutableStateOf("5") }
@@ -37,109 +38,141 @@ fun PostsScreen(modifier: Modifier = Modifier) {
     fun loadPosts() {
         scope.launch {
             try { posts = withContext(Dispatchers.IO) { MetaApi.pagePosts(s) } }
-            catch (e: Exception) { msg = e.message ?: "এরর" }
+            catch (e: Exception) { msg = e.message ?: "Error" }
         }
     }
 
     LaunchedEffect(Unit) {
         if (s.fbToken.isNotBlank() && s.pageId.isNotBlank()) loadPosts()
-        else msg = "আগে সেটিংসে ফেসবুক টোকেন ও পেজ আইডি দিন"
+        else msg = "Add your Facebook token and Page ID in Settings first."
     }
 
     val t = target
     if (t != null) {
         val total = (budget.toLongOrNull() ?: 0L) * (days.toLongOrNull() ?: 0L)
-        AlertDialog(
-            onDismissRequest = { target = null },
-            title = { Text("পোস্ট বুস্ট") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Soft(t.message.take(100))
-                    Field("দৈনিক বাজেট", budget, { budget = it.filter { c -> c.isDigit() } })
-                    Field("কত দিন", days, { days = it.filter { c -> c.isDigit() } })
-                    Field("দেশ কোড (কমা দিয়ে, যেমন BD,IN)", countries, { countries = it })
-                    Field("বয়স (সর্বনিম্ন)", ageMin, { ageMin = it.filter { c -> c.isDigit() } })
-                    Field("বয়স (সর্বোচ্চ)", ageMax, { ageMax = it.filter { c -> c.isDigit() } })
-                    White("⚠️ সর্বোচ্চ খরচ: প্রায় $total (অ্যাকাউন্টের মুদ্রায়)", bold = true)
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val b = budget.toLongOrNull() ?: 0L
-                    val d = days.toIntOrNull() ?: 0
-                    if (b <= 0 || d <= 0) { msg = "বাজেট ও দিন সঠিক দিন"; return@TextButton }
+        AppDialog(
+            title = "Boost post",
+            confirmText = "Start boost",
+            onConfirm = {
+                val b = budget.toLongOrNull() ?: 0L
+                val d = days.toIntOrNull() ?: 0
+                if (b <= 0 || d <= 0) {
+                    msg = "Enter a valid budget and number of days."
+                } else {
                     target = null
                     scope.launch {
-                        busy = true; msg = "বুস্ট তৈরি হচ্ছে..."
+                        busy = true; msg = "Creating boost..."
                         msg = try {
                             val id = withContext(Dispatchers.IO) {
                                 MetaApi.boostPost(s, t.id, b * 100, d, countries, ageMin.toIntOrNull() ?: 18, ageMax.toIntOrNull() ?: 45)
                             }
-                            "বুস্ট চালু হয়েছে ✅ (ক্যাম্পেইন $id)। অ্যাডস ট্যাবে দেখুন।"
-                        } catch (e: Exception) { e.message ?: "এরর" }
+                            "Boost started (campaign $id). Check the Ads tab."
+                        } catch (e: Exception) { e.message ?: "Error" }
                         busy = false
                     }
-                }) { Text("বুস্ট শুরু করুন (খরচ হবে)") }
+                }
             },
-            dismissButton = { TextButton(onClick = { target = null }) { Text("বাতিল") } }
-        )
+            onDismiss = { target = null }
+        ) {
+            Muted(t.message.take(100))
+            Field("Daily budget", budget, { budget = it.filter { c -> c.isDigit() } })
+            Field("Number of days", days, { days = it.filter { c -> c.isDigit() } })
+            Field("Country codes (comma separated, e.g. BD,IN)", countries, { countries = it })
+            Field("Minimum age", ageMin, { ageMin = it.filter { c -> c.isDigit() } })
+            Field("Maximum age", ageMax, { ageMax = it.filter { c -> c.isDigit() } })
+            Notice("This will spend real money. Maximum spend: about $total (account currency).", isError = true)
+        }
     }
 
-    ScreenColumn(modifier) {
-        item { H("পোস্ট ও বুস্ট") }
-        if (msg.isNotBlank()) item { Panel { White(msg) } }
+    ScreenColumn(modifier, title = "Posts & Boost", onBack = onBack) {
+        if (msg.isNotBlank()) item { Notice(msg) }
 
         item {
             Panel {
-                White("নতুন পোস্ট", bold = true)
-                Soft("আইডিয়া লিখে AI দিয়ে ক্যাপশন বানাতে পারেন, বা নিজে লিখুন")
-                Spacer(Modifier.height(8.dp))
-                Field("পোস্টের লেখা বা আইডিয়া", text, { text = it }, lines = 5)
-                Spacer(Modifier.height(8.dp))
-                Field("কত ঘণ্টা পরে পাবলিশ (ফাঁকা = এখনই)", hours, { hours = it.filter { c -> c.isDigit() } })
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BrandButton("AI দিয়ে লিখুন", {
-                        scope.launch {
-                            busy = true
-                            try { text = withContext(Dispatchers.IO) { Ai.writePost(s, text) } }
-                            catch (e: Exception) { msg = e.message ?: "এরর" }
-                            busy = false
-                        }
-                    }, enabled = !busy && text.isNotBlank() && s.aiKey.isNotBlank())
-                    BrandButton(if (hours.isBlank()) "পাবলিশ" else "শিডিউল", {
-                        scope.launch {
-                            busy = true
-                            try {
-                                val at = hours.toLongOrNull()?.let { System.currentTimeMillis() / 1000 + it * 3600 }
-                                withContext(Dispatchers.IO) { MetaApi.publishPost(s, text, at) }
-                                msg = if (at == null) "পাবলিশ হয়েছে ✅" else "শিডিউল হয়েছে ✅"
-                                text = ""; hours = ""
-                                loadPosts()
-                            } catch (e: Exception) { msg = e.message ?: "এরর" }
-                            busy = false
-                        }
-                    }, enabled = !busy && text.isNotBlank())
+                CardHeader(
+                    Icons.Rounded.Article, BrandPink, "New post",
+                    "Write your own text or let AI write it from an idea"
+                )
+                Field("Post text or idea", text, { text = it }, lines = 5)
+                Spacer(Modifier.height(10.dp))
+                Field("Publish after (hours). Leave empty to publish now", hours, { hours = it.filter { c -> c.isDigit() } })
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlineButton(
+                        "Write with AI",
+                        {
+                            scope.launch {
+                                busy = true
+                                try { text = withContext(Dispatchers.IO) { Ai.writePost(s, text) } }
+                                catch (e: Exception) { msg = e.message ?: "Error" }
+                                busy = false
+                            }
+                        },
+                        Modifier.weight(1f),
+                        enabled = !busy && text.isNotBlank() && s.aiKey.isNotBlank(),
+                        icon = Icons.Rounded.AutoAwesome
+                    )
+                    BrandButton(
+                        if (hours.isBlank()) "Publish" else "Schedule",
+                        {
+                            scope.launch {
+                                busy = true
+                                try {
+                                    val at = hours.toLongOrNull()?.let { System.currentTimeMillis() / 1000 + it * 3600 }
+                                    withContext(Dispatchers.IO) { MetaApi.publishPost(s, text, at) }
+                                    msg = if (at == null) "Post published." else "Post scheduled."
+                                    text = ""; hours = ""
+                                    loadPosts()
+                                } catch (e: Exception) { msg = e.message ?: "Error" }
+                                busy = false
+                            }
+                        },
+                        Modifier.weight(1f),
+                        enabled = !busy && text.isNotBlank(),
+                        icon = if (hours.isBlank()) Icons.Rounded.Send else Icons.Rounded.Schedule
+                    )
                 }
-                Spacer(Modifier.height(8.dp))
-                BrandButton("৩টা অ্যাড কপি বানান", {
-                    scope.launch {
-                        busy = true; copy = "AI লিখছে..."
-                        copy = try { withContext(Dispatchers.IO) { Ai.adCopy(s, text) } } catch (e: Exception) { e.message ?: "এরর" }
-                        busy = false
-                    }
-                }, enabled = !busy && text.isNotBlank() && s.aiKey.isNotBlank())
+                Spacer(Modifier.height(10.dp))
+                OutlineButton(
+                    "Generate 3 ad copies",
+                    {
+                        scope.launch {
+                            busy = true; adCopy = "AI is writing..."
+                            adCopy = try { withContext(Dispatchers.IO) { Ai.adCopy(s, text) } } catch (e: Exception) { e.message ?: "Error" }
+                            busy = false
+                        }
+                    },
+                    Modifier.fillMaxWidth(),
+                    enabled = !busy && text.isNotBlank() && s.aiKey.isNotBlank(),
+                    icon = Icons.Rounded.Campaign
+                )
             }
         }
-        if (copy.isNotBlank()) item { Panel { White(copy) } }
+        if (adCopy.isNotBlank()) item {
+            Panel {
+                CardHeader(Icons.Rounded.AutoAwesome, BrandPurple, "Ad copy ideas")
+                Body(adCopy)
+            }
+        }
 
-        item { H("আগের পোস্ট") }
+        item { SectionTitle("Recent posts") }
+        if (posts.isEmpty()) item { Muted("No posts loaded yet.") }
         items(posts.size) { idx ->
             val p = posts[idx]
             Panel {
-                White(p.message.ifBlank { "(লেখা নেই)" }.take(140))
-                Spacer(Modifier.height(8.dp))
-                BrandButton("বুস্ট করুন", { target = p }, enabled = !busy && s.adAccount.isNotBlank())
+                Row(verticalAlignment = Alignment.Top) {
+                    IconTile(Icons.Rounded.Article, BrandBlue, 40.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Body(p.message.ifBlank { "(no text)" }.take(140), Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(12.dp))
+                BrandButton(
+                    "Boost post",
+                    { target = p },
+                    Modifier.fillMaxWidth(),
+                    enabled = !busy && s.adAccount.isNotBlank(),
+                    icon = Icons.Rounded.RocketLaunch
+                )
             }
         }
     }
