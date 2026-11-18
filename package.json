@@ -1,0 +1,7 @@
+{
+  "name": "boosthub-server",
+  "private": true,
+  "dependencies": {
+    "@vercel/node": "latest"
+  }
+}
