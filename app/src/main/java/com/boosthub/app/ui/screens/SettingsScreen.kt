@@ -4,22 +4,47 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.boosthub.app.data.Backend
 import com.boosthub.app.data.Store
 import com.boosthub.app.ui.components.*
 import com.boosthub.app.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+@Composable
+private fun StatusRow(label: String, ok: Boolean) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Body(label)
+        StatusChip(if (ok) "Connected" else "Not set", if (ok) BrandGreen else BrandOrange)
+    }
+}
 
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val s = remember { Store(ctx) }
-    var fb by remember { mutableStateOf(s.fbToken) }
+    val scope = rememberCoroutineScope()
+
+    var url by remember { mutableStateOf(s.serverUrl) }
+    var code by remember { mutableStateOf(s.accessCode) }
+    var fbOk by remember { mutableStateOf(s.fbReady) }
+    var aiOk by remember { mutableStateOf(s.aiReady) }
     var acct by remember { mutableStateOf(s.adAccount) }
     var page by remember { mutableStateOf(s.pageId) }
-    var ai by remember { mutableStateOf(s.aiKey) }
     var model by remember { mutableStateOf(s.aiModel) }
+    var testing by remember { mutableStateOf(false) }
+    var connMsg by remember { mutableStateOf("") }
+    var connErr by remember { mutableStateOf(false) }
+
     var biz by remember { mutableStateOf(s.bizInfo) }
     var cap by remember { mutableStateOf(s.dailyCap.toString()) }
     var pct by remember { mutableStateOf(s.maxChangePct.toString()) }
@@ -31,24 +56,47 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         item {
             Panel {
                 CardHeader(
-                    Icons.Rounded.Link, BrandBlue, "Facebook connection",
-                    "System User or long-lived token"
+                    Icons.Rounded.Link, BrandBlue, "Server connection",
+                    "Your Vercel server holds all API keys"
                 )
-                Muted("Required permissions: ads_management, pages_messaging, pages_manage_metadata, pages_read_engagement, pages_manage_engagement, pages_manage_posts")
+                Field("Server URL (e.g. https://your-app.vercel.app)", url, { url = it })
+                Spacer(Modifier.height(10.dp))
+                Field("Access code", code, { code = it }, secret = true)
                 Spacer(Modifier.height(12.dp))
-                Field("Facebook access token", fb, { fb = it }, secret = true)
-                Spacer(Modifier.height(10.dp))
-                Field("Ad account ID (e.g. 1234567890)", acct, { acct = it })
-                Spacer(Modifier.height(10.dp))
-                Field("Facebook Page ID", page, { page = it })
-            }
-        }
-        item {
-            Panel {
-                CardHeader(Icons.Rounded.Key, BrandPurple, "AI connection")
-                Field("AI API key", ai, { ai = it }, secret = true)
-                Spacer(Modifier.height(10.dp))
-                Field("Model", model, { model = it })
+                BrandButton(
+                    if (testing) "Testing..." else "Save & test connection",
+                    {
+                        scope.launch {
+                            testing = true; connMsg = ""; connErr = false
+                            try {
+                                s.serverUrl = url
+                                s.accessCode = code
+                                withContext(Dispatchers.IO) { Backend.sync(s) }
+                                fbOk = s.fbReady; aiOk = s.aiReady
+                                acct = s.adAccount; page = s.pageId; model = s.aiModel
+                                connMsg = "Connected to your server."
+                            } catch (e: Exception) {
+                                connMsg = e.message ?: "Connection failed"
+                                connErr = true
+                            }
+                            testing = false
+                        }
+                    },
+                    Modifier.fillMaxWidth(),
+                    enabled = !testing && url.isNotBlank() && code.isNotBlank(),
+                    icon = Icons.Rounded.Link
+                )
+                if (connMsg.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Notice(connMsg, isError = connErr)
+                }
+                Spacer(Modifier.height(12.dp))
+                Separator()
+                StatusRow("Facebook access token", fbOk)
+                StatusRow("Gemini API key", aiOk)
+                if (acct.isNotBlank()) Muted("Ad account ID: $acct")
+                if (page.isNotBlank()) Muted("Page ID: $page")
+                if (model.isNotBlank()) Muted("AI model: $model")
             }
         }
         item {
@@ -79,8 +127,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             BrandButton(
                 "Save settings",
                 {
-                    s.fbToken = fb; s.adAccount = acct; s.pageId = page; s.pageToken = ""
-                    s.aiKey = ai; s.aiModel = model.ifBlank { "claude-sonnet-5-5" }; s.bizInfo = biz
+                    s.bizInfo = biz
                     s.dailyCap = cap.toIntOrNull() ?: 0
                     s.maxChangePct = (pct.toIntOrNull() ?: 20).coerceIn(1, 50)
                     s.maxActions = (acts.toIntOrNull() ?: 3).coerceIn(1, 10)
