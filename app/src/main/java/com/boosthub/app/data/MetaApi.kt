@@ -1,24 +1,28 @@
 package com.boosthub.app.data
 
 import org.json.JSONObject
-import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+/** Facebook Graph API calls. They go through your Vercel server, which holds the access token. */
 object MetaApi {
-    private const val V = "https://graph.facebook.com/v21.0"
+    private const val USER = "user"
+    private const val PAGE = "page"
 
-    private fun enc(x: String) = URLEncoder.encode(x, "UTF-8")
-
-    private fun get(path: String, params: Map<String, String>, token: String): String {
-        val q = (params + ("access_token" to token)).entries.joinToString("&") { "${enc(it.key)}=${enc(it.value)}" }
-        return Http.request("GET", "$V/$path?$q", emptyMap(), null)
+    private fun call(s: Store, method: String, path: String, params: Map<String, String>, role: String): String {
+        val body = JSONObject()
+            .put("method", method)
+            .put("path", path)
+            .put("params", JSONObject(params))
+            .put("as", role)
+        return Backend.post(s, "meta", body)
     }
 
-    private fun post(path: String, params: Map<String, String>, token: String): String {
-        val body = (params + ("access_token" to token)).entries.joinToString("&") { "${enc(it.key)}=${enc(it.value)}" }
-        return Http.request("POST", "$V/$path", mapOf("Content-Type" to "application/x-www-form-urlencoded"), body)
-    }
+    private fun get(s: Store, path: String, params: Map<String, String>, role: String): String =
+        call(s, "GET", path, params, role)
+
+    private fun post(s: Store, path: String, params: Map<String, String>, role: String): String =
+        call(s, "POST", path, params, role)
 
     private fun acct(s: Store) = if (s.adAccount.startsWith("act_")) s.adAccount else "act_${s.adAccount}"
 
@@ -27,7 +31,7 @@ object MetaApi {
     data class Insight(val spend: Double, val impressions: Long, val clicks: Long, val ctr: Double, val cpc: Double, val results: Double)
 
     fun campaigns(s: Store): List<Campaign> {
-        val j = JSONObject(get("${acct(s)}/campaigns", mapOf("fields" to "id,name,effective_status,daily_budget", "limit" to "50"), s.fbToken))
+        val j = JSONObject(get(s, "${acct(s)}/campaigns", mapOf("fields" to "id,name,effective_status,daily_budget", "limit" to "50"), USER))
         val a = j.optJSONArray("data") ?: return emptyList()
         val out = mutableListOf<Campaign>()
         for (k in 0 until a.length()) {
@@ -42,9 +46,10 @@ object MetaApi {
     fun insights(s: Store): Map<String, Insight> {
         val j = JSONObject(
             get(
+                s,
                 "${acct(s)}/insights",
                 mapOf("level" to "campaign", "fields" to "campaign_id,spend,impressions,clicks,ctr,cpc,actions", "date_preset" to "last_7d", "limit" to "100"),
-                s.fbToken
+                USER
             )
         )
         val a = j.optJSONArray("data") ?: return emptyMap()
@@ -75,11 +80,11 @@ object MetaApi {
     }
 
     fun setStatus(s: Store, id: String, status: String) {
-        post(id, mapOf("status" to status), s.fbToken)
+        post(s, id, mapOf("status" to status), USER)
     }
 
     fun setBudget(s: Store, id: String, minorUnits: Long) {
-        post(id, mapOf("daily_budget" to minorUnits.toString()), s.fbToken)
+        post(s, id, mapOf("daily_budget" to minorUnits.toString()), USER)
     }
 
     // ---------- Page messages ----------
@@ -94,27 +99,16 @@ object MetaApi {
         val transcript: String
     )
 
-    fun pageToken(s: Store): String {
-        if (s.pageToken.isNotBlank()) return s.pageToken
-        return try {
-            val j = JSONObject(get(s.pageId, mapOf("fields" to "access_token"), s.fbToken))
-            val t = j.optString("access_token")
-            if (t.isNotBlank()) { s.pageToken = t; t } else s.fbToken
-        } catch (e: Exception) {
-            s.fbToken
-        }
-    }
-
     private fun parseTime(x: String): Long =
         try { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).parse(x)?.time ?: 0L } catch (e: Exception) { 0L }
 
     fun conversations(s: Store): List<Conv> {
-        val t = pageToken(s)
         val j = JSONObject(
             get(
+                s,
                 "${s.pageId}/conversations",
                 mapOf("platform" to "messenger", "fields" to "id,updated_time,messages.limit(6){id,message,from,created_time}", "limit" to "15"),
-                t
+                PAGE
             )
         )
         val a = j.optJSONArray("data") ?: return emptyList()
@@ -148,13 +142,14 @@ object MetaApi {
 
     fun sendMessage(s: Store, psid: String, text: String) {
         post(
+            s,
             "${s.pageId}/messages",
             mapOf(
                 "recipient" to JSONObject().put("id", psid).toString(),
                 "message" to JSONObject().put("text", text).toString(),
                 "messaging_type" to "RESPONSE"
             ),
-            pageToken(s)
+            PAGE
         )
     }
 
@@ -179,18 +174,20 @@ object MetaApi {
     fun billing(s: Store): Billing {
         val j = JSONObject(
             get(
+                s,
                 acct(s),
                 mapOf("fields" to "name,account_id,currency,balance,amount_spent,spend_cap,account_status,funding_source_details"),
-                s.fbToken
+                USER
             )
         )
         var bizName = ""; var bizAddr = ""; var taxId = ""
         try {
             val b = JSONObject(
                 get(
+                    s,
                     acct(s),
                     mapOf("fields" to "business_name,business_street,business_city,business_zip,business_country_code,tax_id"),
-                    s.fbToken
+                    USER
                 )
             )
             bizName = b.optString("business_name")
@@ -200,18 +197,18 @@ object MetaApi {
         } catch (e: Exception) { }
         var prepay = 0L
         try {
-            val p = JSONObject(get(acct(s), mapOf("fields" to "total_prepay_balance"), s.fbToken))
+            val p = JSONObject(get(s, acct(s), mapOf("fields" to "total_prepay_balance"), USER))
             prepay = p.optJSONObject("total_prepay_balance")?.optString("amount_in_hundredths")?.toLongOrNull() ?: 0L
         } catch (e: Exception) { }
         var threshold = 0L
         try {
-            val d = JSONObject(get("${acct(s)}/adspaymentcycle", mapOf("fields" to "threshold_amount"), s.fbToken)).optJSONArray("data")
+            val d = JSONObject(get(s, "${acct(s)}/adspaymentcycle", mapOf("fields" to "threshold_amount"), USER)).optJSONArray("data")
             if (d != null && d.length() > 0) threshold = d.getJSONObject(0).optString("threshold_amount").toLongOrNull() ?: 0L
         } catch (e: Exception) { }
         val daily = mutableListOf<Pair<String, Double>>()
         try {
             val d = JSONObject(
-                get(acct(s), mapOf("fields" to "spend", "time_increment" to "1", "date_preset" to "last_7d", "level" to "account"), s.fbToken)
+                get(s, acct(s), mapOf("fields" to "spend", "time_increment" to "1", "date_preset" to "last_7d", "level" to "account"), USER)
             ).optJSONArray("data")
             if (d != null) for (k in 0 until d.length()) {
                 val o = d.getJSONObject(k)
@@ -229,25 +226,14 @@ object MetaApi {
         )
     }
 
-    /** অ্যাকাউন্ট স্পেন্ডিং লিমিট (মাইনর ইউনিটে). 0 = সীমা তুলে দেওয়া */
+    /** Account spending limit (minor units). 0 = remove the limit */
     fun setSpendCap(s: Store, minorUnits: Long) {
-        post(acct(s), mapOf("spend_cap" to minorUnits.toString()), s.fbToken)
+        post(s, acct(s), mapOf("spend_cap" to minorUnits.toString()), USER)
     }
 
     fun billingUrl(s: Store): String {
         val id = s.adAccount.removePrefix("act_")
         return "https://business.facebook.com/billing_hub/payment_settings?asset_id=$id"
-    }
-
-    fun statusText(code: Int): String = when (code) {
-        1 -> "সক্রিয়"
-        2 -> "বন্ধ (Disabled)"
-        3 -> "বকেয়া আছে (Unsettled)"
-        7 -> "রিভিউয়ে আছে"
-        9 -> "গ্রেস পিরিয়ড"
-        100 -> "বন্ধ হওয়ার অপেক্ষায়"
-        101 -> "বন্ধ"
-        else -> "কোড $code"
     }
 
     // ---------- Dashboard ----------
@@ -256,9 +242,10 @@ object MetaApi {
     fun summary(s: Store): Summary {
         val d = JSONObject(
             get(
+                s,
                 acct(s),
                 mapOf("fields" to "spend,impressions,clicks,actions", "time_increment" to "1", "date_preset" to "last_7d", "level" to "account"),
-                s.fbToken
+                USER
             )
         ).optJSONArray("data")
         var sp = 0.0; var im = 0L; var cl = 0L; var rs = 0.0
@@ -287,7 +274,7 @@ object MetaApi {
     data class Comment(val id: String, val postId: String, val text: String, val fromId: String, val time: Long)
 
     fun pagePosts(s: Store): List<Post> {
-        val j = JSONObject(get("${s.pageId}/posts", mapOf("fields" to "id,message,created_time", "limit" to "15"), pageToken(s)))
+        val j = JSONObject(get(s, "${s.pageId}/posts", mapOf("fields" to "id,message,created_time", "limit" to "15"), PAGE))
         val a = j.optJSONArray("data") ?: return emptyList()
         return (0 until a.length()).map {
             val o = a.getJSONObject(it)
@@ -295,22 +282,23 @@ object MetaApi {
         }
     }
 
-    /** scheduleUnix = null হলে এখনই পাবলিশ, নইলে শিডিউল (১০ মিনিট থেকে ৭৫ দিনের মধ্যে) */
+    /** scheduleUnix = null publishes now, otherwise schedules (between 10 minutes and 75 days ahead) */
     fun publishPost(s: Store, message: String, scheduleUnix: Long?): String {
         val p = mutableMapOf("message" to message)
         if (scheduleUnix != null) {
             p["published"] = "false"
             p["scheduled_publish_time"] = scheduleUnix.toString()
         }
-        return JSONObject(post("${s.pageId}/feed", p, pageToken(s))).optString("id")
+        return JSONObject(post(s, "${s.pageId}/feed", p, PAGE)).optString("id")
     }
 
     fun comments(s: Store, postId: String): List<Comment> {
         val j = JSONObject(
             get(
+                s,
                 "$postId/comments",
                 mapOf("fields" to "id,message,from,created_time", "order" to "reverse_chronological", "limit" to "10"),
-                pageToken(s)
+                PAGE
             )
         )
         val a = j.optJSONArray("data") ?: return emptyList()
@@ -324,24 +312,24 @@ object MetaApi {
     }
 
     fun replyComment(s: Store, commentId: String, text: String) {
-        post("$commentId/comments", mapOf("message" to text), pageToken(s))
+        post(s, "$commentId/comments", mapOf("message" to text), PAGE)
     }
 
     fun hideComment(s: Store, commentId: String) {
-        post(commentId, mapOf("is_hidden" to "true"), pageToken(s))
+        post(s, commentId, mapOf("is_hidden" to "true"), PAGE)
     }
 
     // ---------- Boost a post ----------
-    /** ক্যাম্পেইন → অ্যাডসেট → ক্রিয়েটিভ → অ্যাড বানিয়ে শেষে চালু করে। সফল হলে ক্যাম্পেইন আইডি দেয় */
+    /** Creates campaign, ad set, creative and ad, then activates it. Returns the campaign ID on success */
     fun boostPost(s: Store, postId: String, dailyMinor: Long, days: Int, countries: String, ageMin: Int, ageMax: Int): String {
         val a = acct(s)
-        val t = s.fbToken
         val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
         val start = System.currentTimeMillis() + 10 * 60 * 1000L
         val end = start + days * 24L * 3600 * 1000L
 
         val camp = JSONObject(
             post(
+                s,
                 "$a/campaigns",
                 mapOf(
                     "name" to "Boost ${postId.takeLast(8)}",
@@ -351,7 +339,7 @@ object MetaApi {
                     "daily_budget" to dailyMinor.toString(),
                     "bid_strategy" to "LOWEST_COST_WITHOUT_CAP"
                 ),
-                t
+                USER
             )
         ).getString("id")
 
@@ -363,6 +351,7 @@ object MetaApi {
 
         val adset = JSONObject(
             post(
+                s,
                 "$a/adsets",
                 mapOf(
                     "name" to "Boost Adset",
@@ -376,15 +365,16 @@ object MetaApi {
                     "end_time" to fmt.format(java.util.Date(end)),
                     "status" to "ACTIVE"
                 ),
-                t
+                USER
             )
         ).getString("id")
 
         val creative = JSONObject(
-            post("$a/adcreatives", mapOf("name" to "Boost Creative", "object_story_id" to postId), t)
+            post(s, "$a/adcreatives", mapOf("name" to "Boost Creative", "object_story_id" to postId), USER)
         ).getString("id")
 
         post(
+            s,
             "$a/ads",
             mapOf(
                 "name" to "Boost Ad",
@@ -392,10 +382,9 @@ object MetaApi {
                 "creative" to JSONObject().put("creative_id", creative).toString(),
                 "status" to "ACTIVE"
             ),
-            t
+            USER
         )
-        post(camp, mapOf("status" to "ACTIVE"), t)
+        post(s, camp, mapOf("status" to "ACTIVE"), USER)
         return camp
     }
 }
-
