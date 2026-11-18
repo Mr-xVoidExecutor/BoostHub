@@ -43,8 +43,8 @@ fun AdsScreen(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(Unit) {
-        if (s.fbToken.isNotBlank() && s.adAccount.isNotBlank()) load()
-        else msg = "Add your Facebook token and Ad Account ID in Settings first."
+        if (s.fbReady && s.adAccount.isNotBlank()) load()
+        else msg = "Connect your server in Settings first."
     }
 
     val bf = budgetFor
@@ -90,7 +90,7 @@ fun AdsScreen(modifier: Modifier = Modifier) {
                         }
                     },
                     Modifier.weight(1f),
-                    enabled = camps.isNotEmpty() && s.aiKey.isNotBlank(),
+                    enabled = camps.isNotEmpty() && s.aiReady,
                     icon = Icons.Rounded.Insights
                 )
             }
