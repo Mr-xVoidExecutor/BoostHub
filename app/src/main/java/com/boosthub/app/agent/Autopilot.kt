@@ -34,22 +34,22 @@ object Autopilot {
 
     suspend fun runOnce(ctx: Context, manual: Boolean = false): String = withContext(Dispatchers.IO) {
         val s = Store(ctx)
-        if (!manual && !s.autopilot) return@withContext "অটোপাইলট বন্ধ"
-        if (s.aiKey.isBlank() || s.fbToken.isBlank()) {
-            s.log("⚠️ সেটিংসে ফেসবুক টোকেন ও AI কী দিন")
-            return@withContext "কী দেওয়া হয়নি"
+        if (!manual && !s.autopilot) return@withContext "Autopilot is off"
+        if (!s.aiReady || !s.fbReady) {
+            s.log("Server not connected. Open Settings and connect your server.")
+            return@withContext "Server not connected"
         }
         val sb = StringBuilder()
         if (s.autoReply && s.pageId.isNotBlank()) {
-            try { sb.appendLine(handleMessages(ctx, s)) } catch (e: Exception) { s.log("❌ মেসেজ এরর: ${e.message}"); sb.appendLine("মেসেজ এরর") }
+            try { sb.appendLine(handleMessages(ctx, s)) } catch (e: Exception) { s.log("Messages error: ${e.message}"); sb.appendLine("Messages error") }
         }
         if (s.autoComment && s.pageId.isNotBlank()) {
-            try { sb.appendLine(handleComments(ctx, s)) } catch (e: Exception) { s.log("❌ কমেন্ট এরর: ${e.message}"); sb.appendLine("কমেন্ট এরর") }
+            try { sb.appendLine(handleComments(ctx, s)) } catch (e: Exception) { s.log("Comments error: ${e.message}"); sb.appendLine("Comments error") }
         }
         if (s.adsOpt && s.adAccount.isNotBlank()) {
-            try { sb.appendLine(handleAds(ctx, s)) } catch (e: Exception) { s.log("❌ অ্যাডস এরর: ${e.message}"); sb.appendLine("অ্যাডস এরর") }
+            try { sb.appendLine(handleAds(ctx, s)) } catch (e: Exception) { s.log("Ads error: ${e.message}"); sb.appendLine("Ads error") }
         }
-        sb.toString().trim().ifBlank { "কিছু করার ছিল না" }
+        sb.toString().trim().ifBlank { "Nothing to do" }
     }
 
     private fun handleMessages(ctx: Context, s: Store): String {
@@ -59,21 +59,21 @@ object Autopilot {
         for (c in convs) {
             if (replied >= s.maxReplies) break
             if (c.lastFromPage || c.psid.isBlank() || s.isDone(c.lastMsgId)) continue
-            if (now - c.lastTime > 23L * 3600 * 1000) { s.markDone(c.lastMsgId); continue } // মেসেঞ্জারের ২৪ ঘণ্টার নিয়ম
+            if (now - c.lastTime > 23L * 3600 * 1000) { s.markDone(c.lastMsgId); continue } // Messenger 24-hour rule
             val reply = Ai.reply(s, c.transcript)
             if (reply.isBlank() || reply.contains("HANDOFF")) {
-                s.log("🙋 আপনার নজর দরকার: ${c.name} — \"${c.lastText.take(60)}\"")
-                Notifier.send(ctx, "🙋 আপনার নজর দরকার", "${c.name}: ${c.lastText.take(100)}")
+                s.log("Needs your attention: ${c.name} - \"${c.lastText.take(60)}\"")
+                Notifier.send(ctx, "Needs your attention", "${c.name}: ${c.lastText.take(100)}")
                 s.markDone(c.lastMsgId)
                 continue
             }
             MetaApi.sendMessage(s, c.psid, reply)
             s.markDone(c.lastMsgId)
-            s.log("💬 ${c.name} কে উত্তর: ${reply.take(80)}")
+            s.log("Replied to ${c.name}: ${reply.take(80)}")
             replied++
         }
-        if (replied > 0) Notifier.send(ctx, "BoostHub", "$replied টি মেসেজের উত্তর দেওয়া হয়েছে")
-        return "মেসেজ: $replied টি উত্তর দেওয়া হয়েছে"
+        if (replied > 0) Notifier.send(ctx, "BoostHub", "$replied message(s) answered")
+        return "Messages: $replied replied"
     }
 
     private fun handleComments(ctx: Context, s: Store): String {
@@ -95,26 +95,26 @@ object Autopilot {
                 when (o.optString("action")) {
                     "reply" -> if (txt.isNotBlank()) {
                         MetaApi.replyComment(s, c.id, txt)
-                        s.log("💬 কমেন্টে উত্তর: ${txt.take(70)}")
+                        s.log("Replied to a comment: ${txt.take(70)}")
                         n++
                     }
                     "hide" -> {
                         if (s.autoApply) {
                             MetaApi.hideComment(s, c.id)
-                            s.log("🙈 কমেন্ট হাইড: ${c.text.take(50)}")
+                            s.log("Hid a comment: ${c.text.take(50)}")
                             n++
-                        } else s.log("💡 সাজেশন (হাইড): ${c.text.take(50)}")
+                        } else s.log("Suggestion (hide): ${c.text.take(50)}")
                     }
                 }
             }
         }
-        if (n > 0) Notifier.send(ctx, "BoostHub", "কমেন্টে $n টি অ্যাকশন নেওয়া হয়েছে")
-        return "কমেন্ট: $n টি অ্যাকশন"
+        if (n > 0) Notifier.send(ctx, "BoostHub", "$n comment action(s) taken")
+        return "Comments: $n action(s)"
     }
 
     private fun handleAds(ctx: Context, s: Store): String {
         val camps = MetaApi.campaigns(s)
-        if (camps.isEmpty()) return "অ্যাডস: কোনো ক্যাম্পেইন নেই"
+        if (camps.isEmpty()) return "Ads: no campaigns"
         val ins = MetaApi.insights(s)
         val text = Ai.decisions(s, dataJson(camps, ins), s.maxActions, s.maxChangePct)
         return applyDecisions(ctx, s, camps, text)
@@ -123,7 +123,7 @@ object Autopilot {
     private fun applyDecisions(ctx: Context, s: Store, camps: List<MetaApi.Campaign>, text: String): String {
         val a = text.indexOf('[')
         val b = text.lastIndexOf(']')
-        if (a < 0 || b < a) return "অ্যাডস: কোনো অ্যাকশন আসেনি"
+        if (a < 0 || b < a) return "Ads: no actions returned"
         val arr = JSONArray(text.substring(a, b + 1))
         val byId = camps.associateBy { it.id }
         val cap = s.dailyCap * 100L
@@ -139,19 +139,19 @@ object Autopilot {
                     if (c.status != "ACTIVE") continue
                     if (s.autoApply) {
                         MetaApi.setStatus(s, c.id, "PAUSED"); total -= c.dailyBudget
-                        s.log("⏸ বন্ধ করা হয়েছে: ${c.name} — $reason")
-                        Notifier.send(ctx, "⏸ ক্যাম্পেইন বন্ধ", "${c.name}: $reason")
-                    } else s.log("💡 সাজেশন (বন্ধ): ${c.name} — $reason")
+                        s.log("Paused: ${c.name} - $reason")
+                        Notifier.send(ctx, "Campaign paused", "${c.name}: $reason")
+                    } else s.log("Suggestion (pause): ${c.name} - $reason")
                     done++
                 }
                 "resume" -> {
                     if (c.status != "PAUSED") continue
-                    if (cap <= 0 || total + c.dailyBudget > cap) { s.log("🚫 চালু করা হয়নি (বাজেট সীমা): ${c.name}"); continue }
+                    if (cap <= 0 || total + c.dailyBudget > cap) { s.log("Not resumed (budget limit): ${c.name}"); continue }
                     if (s.autoApply) {
                         MetaApi.setStatus(s, c.id, "ACTIVE"); total += c.dailyBudget
-                        s.log("▶️ চালু করা হয়েছে: ${c.name} — $reason")
-                        Notifier.send(ctx, "▶️ ক্যাম্পেইন চালু", "${c.name}: $reason")
-                    } else s.log("💡 সাজেশন (চালু): ${c.name} — $reason")
+                        s.log("Resumed: ${c.name} - $reason")
+                        Notifier.send(ctx, "Campaign resumed", "${c.name}: $reason")
+                    } else s.log("Suggestion (resume): ${c.name} - $reason")
                     done++
                 }
                 "set_budget" -> {
@@ -159,19 +159,19 @@ object Autopilot {
                     if (c.dailyBudget <= 0 || nb <= 0) continue
                     val lo = c.dailyBudget * (100 - s.maxChangePct) / 100
                     val hi = c.dailyBudget * (100 + s.maxChangePct) / 100
-                    if (nb < lo || nb > hi) { s.log("🚫 বাজেট বদল বাতিল (সীমার বাইরে): ${c.name}"); continue }
+                    if (nb < lo || nb > hi) { s.log("Budget change cancelled (outside limit): ${c.name}"); continue }
                     if (nb > c.dailyBudget && (cap <= 0 || total - c.dailyBudget + nb > cap)) {
-                        s.log("🚫 বাজেট বাড়ানো বাতিল (দৈনিক সীমা): ${c.name}"); continue
+                        s.log("Budget increase cancelled (daily cap): ${c.name}"); continue
                     }
                     if (s.autoApply) {
                         MetaApi.setBudget(s, c.id, nb); total += nb - c.dailyBudget
-                        s.log("💰 বাজেট ${c.dailyBudget / 100} → ${nb / 100}: ${c.name} — $reason")
-                        Notifier.send(ctx, "💰 বাজেট বদল", "${c.name}: ${c.dailyBudget / 100} → ${nb / 100}")
-                    } else s.log("💡 সাজেশন (বাজেট ${nb / 100}): ${c.name} — $reason")
+                        s.log("Budget ${c.dailyBudget / 100} -> ${nb / 100}: ${c.name} - $reason")
+                        Notifier.send(ctx, "Budget changed", "${c.name}: ${c.dailyBudget / 100} -> ${nb / 100}")
+                    } else s.log("Suggestion (budget ${nb / 100}): ${c.name} - $reason")
                     done++
                 }
             }
         }
-        return "অ্যাডস: $done টি অ্যাকশন"
+        return "Ads: $done action(s)"
     }
 }
