@@ -51,7 +51,7 @@ private val tools = listOf(
     Tool("Page Inbox", "Messages and AI replies", Icons.Rounded.Forum, BrandPurple, 2),
     Tool("AI Autopilot", "Auto replies, comments and ads", Icons.Rounded.AutoAwesome, BrandOrange, 3),
     Tool("Billing", "Balance, limits and payment methods", Icons.Rounded.Payments, BrandGreen, 5),
-    Tool("Settings", "Facebook, AI keys and safety limits", Icons.Rounded.Settings, Color(0xFF455A64), 4)
+    Tool("Settings", "Server connection and safety limits", Icons.Rounded.Settings, Color(0xFF455A64), 4)
 )
 
 @Composable
@@ -60,7 +60,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onOpenTab: (Int) -> Unit = {}) {
     val store = remember { Store(ctx) }
     var summary by remember { mutableStateOf<MetaApi.Summary?>(null) }
     LaunchedEffect(Unit) {
-        if (store.fbToken.isNotBlank() && store.adAccount.isNotBlank()) {
+        if (store.fbReady && store.adAccount.isNotBlank()) {
             summary = try { withContext(Dispatchers.IO) { MetaApi.summary(store) } } catch (e: Exception) { null }
         }
     }
@@ -86,7 +86,7 @@ fun HomeScreen(modifier: Modifier = Modifier, onOpenTab: (Int) -> Unit = {}) {
                 }
             }
             if (summary == null) {
-                item { Muted("Add your Facebook token and Ad Account ID in Settings to see live data here.") }
+                item { Muted("Connect your server in Settings to see live data here.") }
             }
         }
     }
