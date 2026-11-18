@@ -1,12 +1,9 @@
 {
-  "name": "boosthub",
+  "name": "boosthub-backend",
   "private": true,
-  "scripts": {
-    "build": "tsc",
-    "start": "node server/dist/index.js"
-  },
-  "dependencies": {
-    "@vercel/node": "latest",
-    "typescript": "^5.0.0"
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vercel/node": "^3.2.0",
+    "typescript": "^5.4.0"
   }
 }
