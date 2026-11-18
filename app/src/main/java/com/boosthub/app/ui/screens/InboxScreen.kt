@@ -38,8 +38,8 @@ fun InboxScreen(modifier: Modifier = Modifier) {
     }
 
     LaunchedEffect(Unit) {
-        if (s.fbToken.isNotBlank() && s.pageId.isNotBlank()) load()
-        else msg = "Add your Facebook token and Page ID in Settings first."
+        if (s.fbReady && s.pageId.isNotBlank()) load()
+        else msg = "Connect your server in Settings first."
     }
 
     val t0 = target
@@ -99,7 +99,7 @@ fun InboxScreen(modifier: Modifier = Modifier) {
                             }
                         },
                         Modifier.fillMaxWidth(),
-                        enabled = s.aiKey.isNotBlank(),
+                        enabled = s.aiReady,
                         icon = Icons.Rounded.AutoAwesome
                     )
                 } else {
