@@ -123,7 +123,7 @@ fun AiScreen(modifier: Modifier = Modifier) {
                         }
                     },
                     Modifier.fillMaxWidth(),
-                    enabled = !thinking && s.aiKey.isNotBlank(),
+                    enabled = !thinking && s.aiReady,
                     icon = Icons.Rounded.Send
                 )
             }
