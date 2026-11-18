@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,6 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import com.boosthub.app.data.Backend
+import com.boosthub.app.data.Store
 import com.boosthub.app.ui.home.HomeScreen
 import com.boosthub.app.ui.screens.AdsScreen
 import com.boosthub.app.ui.screens.AiScreen
@@ -37,6 +41,8 @@ import com.boosthub.app.ui.theme.BrandBlue
 import com.boosthub.app.ui.theme.SurfaceWhite
 import com.boosthub.app.ui.theme.TextBlack
 import com.boosthub.app.ui.theme.TextSoft
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private data class Tab(val title: String, val icon: ImageVector)
 
@@ -50,7 +56,16 @@ private val tabs = listOf(
 
 @Composable
 fun AppRoot() {
+    val ctx = LocalContext.current
     var selected by rememberSaveable { mutableIntStateOf(0) }
+
+    // Refresh the server status in the background when the app opens
+    LaunchedEffect(Unit) {
+        val st = Store(ctx)
+        if (st.serverUrl.isNotBlank() && st.accessCode.isNotBlank()) {
+            try { withContext(Dispatchers.IO) { Backend.sync(st) } } catch (e: Exception) { }
+        }
+    }
 
     // Posts (6) and Billing (5) are sub pages opened from Home
     BackHandler(enabled = selected != 0) { selected = 0 }
