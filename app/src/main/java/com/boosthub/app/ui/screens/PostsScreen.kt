@@ -43,8 +43,8 @@ fun PostsScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     }
 
     LaunchedEffect(Unit) {
-        if (s.fbToken.isNotBlank() && s.pageId.isNotBlank()) loadPosts()
-        else msg = "Add your Facebook token and Page ID in Settings first."
+        if (s.fbReady && s.pageId.isNotBlank()) loadPosts()
+        else msg = "Connect your server in Settings first."
     }
 
     val t = target
@@ -109,7 +109,7 @@ fun PostsScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
                             }
                         },
                         Modifier.weight(1f),
-                        enabled = !busy && text.isNotBlank() && s.aiKey.isNotBlank(),
+                        enabled = !busy && text.isNotBlank() && s.aiReady,
                         icon = Icons.Rounded.AutoAwesome
                     )
                     BrandButton(
@@ -143,7 +143,7 @@ fun PostsScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
                         }
                     },
                     Modifier.fillMaxWidth(),
-                    enabled = !busy && text.isNotBlank() && s.aiKey.isNotBlank(),
+                    enabled = !busy && text.isNotBlank() && s.aiReady,
                     icon = Icons.Rounded.Campaign
                 )
             }
