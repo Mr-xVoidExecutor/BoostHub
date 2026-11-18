@@ -1,12 +1,15 @@
 package com.boosthub.app.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Campaign
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -28,43 +31,51 @@ import com.boosthub.app.ui.screens.BillingScreen
 import com.boosthub.app.ui.screens.InboxScreen
 import com.boosthub.app.ui.screens.PostsScreen
 import com.boosthub.app.ui.screens.SettingsScreen
-import com.boosthub.app.ui.theme.BgDark
+import com.boosthub.app.ui.theme.BgLight
+import com.boosthub.app.ui.theme.BorderGray
 import com.boosthub.app.ui.theme.BrandBlue
-import com.boosthub.app.ui.theme.SurfaceDark
+import com.boosthub.app.ui.theme.SurfaceWhite
+import com.boosthub.app.ui.theme.TextBlack
 import com.boosthub.app.ui.theme.TextSoft
 
 private data class Tab(val title: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("হোম", Icons.Filled.Home),
-    Tab("অ্যাডস", Icons.Filled.Campaign),
-    Tab("ইনবক্স", Icons.Filled.Inbox),
-    Tab("AI", Icons.Filled.AutoAwesome),
-    Tab("সেটিংস", Icons.Filled.Settings)
+    Tab("Home", Icons.Rounded.Home),
+    Tab("Ads", Icons.Rounded.Campaign),
+    Tab("Inbox", Icons.Rounded.Inbox),
+    Tab("AI", Icons.Rounded.AutoAwesome),
+    Tab("Settings", Icons.Rounded.Settings)
 )
 
 @Composable
 fun AppRoot() {
     var selected by rememberSaveable { mutableIntStateOf(0) }
 
+    // Posts (6) and Billing (5) are sub pages opened from Home
+    BackHandler(enabled = selected != 0) { selected = 0 }
+
     Scaffold(
-        containerColor = BgDark,
+        containerColor = BgLight,
         bottomBar = {
-            NavigationBar(containerColor = SurfaceDark) {
-                tabs.forEachIndexed { i, t ->
-                    NavigationBarItem(
-                        selected = selected == i,
-                        onClick = { selected = i },
-                        icon = { Icon(t.icon, contentDescription = t.title) },
-                        label = { Text(t.title) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Color.White,
-                            selectedTextColor = Color.White,
-                            indicatorColor = BrandBlue,
-                            unselectedIconColor = TextSoft,
-                            unselectedTextColor = TextSoft
+            Column {
+                HorizontalDivider(color = BorderGray)
+                NavigationBar(containerColor = SurfaceWhite, tonalElevation = androidx.compose.ui.unit.Dp.Hairline) {
+                    tabs.forEachIndexed { i, t ->
+                        NavigationBarItem(
+                            selected = selected == i || (i == 0 && selected >= 5),
+                            onClick = { selected = i },
+                            icon = { Icon(t.icon, contentDescription = t.title) },
+                            label = { Text(t.title) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = BrandBlue,
+                                selectedTextColor = TextBlack,
+                                indicatorColor = Color(0xFFE7F0FE),
+                                unselectedIconColor = TextSoft,
+                                unselectedTextColor = TextSoft
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -76,8 +87,8 @@ fun AppRoot() {
             2 -> InboxScreen(m)
             3 -> AiScreen(m)
             4 -> SettingsScreen(m)
-            5 -> BillingScreen(m)
-            else -> PostsScreen(m)
+            5 -> BillingScreen(m, onBack = { selected = 0 })
+            else -> PostsScreen(m, onBack = { selected = 0 })
         }
     }
 }
