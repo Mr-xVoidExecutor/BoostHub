@@ -4,7 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** সব সেটিংস ও লগ ফোনের প্রাইভেট স্টোরেজে থাকে */
+/** All settings and logs are kept in the phone's private storage. API keys are NOT stored here. */
 class Store(ctx: Context) {
     private val sp = ctx.applicationContext.getSharedPreferences("boosthub", Context.MODE_PRIVATE)
 
@@ -12,24 +12,31 @@ class Store(ctx: Context) {
     private fun b(k: String, d: Boolean): Boolean = sp.getBoolean(k, d)
     private fun i(k: String, d: Int): Int = sp.getInt(k, d)
 
-    var fbToken: String
-        get() = s("fbToken")
-        set(v) { sp.edit().putString("fbToken", v.trim()).apply() }
+    // ---- Server connection (entered by the user) ----
+    var serverUrl: String
+        get() = s("serverUrl")
+        set(v) { sp.edit().putString("serverUrl", v.trim().trimEnd('/')).apply() }
+    var accessCode: String
+        get() = s("accessCode")
+        set(v) { sp.edit().putString("accessCode", v.trim()).apply() }
+
+    // ---- Cached from the server (not entered by the user) ----
     var adAccount: String
         get() = s("adAccount")
         set(v) { sp.edit().putString("adAccount", v.trim()).apply() }
     var pageId: String
         get() = s("pageId")
         set(v) { sp.edit().putString("pageId", v.trim()).apply() }
-    var pageToken: String
-        get() = s("pageToken")
-        set(v) { sp.edit().putString("pageToken", v.trim()).apply() }
-    var aiKey: String
-        get() = s("aiKey")
-        set(v) { sp.edit().putString("aiKey", v.trim()).apply() }
+    var fbReady: Boolean
+        get() = b("fbReady", false)
+        set(v) { sp.edit().putBoolean("fbReady", v).apply() }
+    var aiReady: Boolean
+        get() = b("aiReady", false)
+        set(v) { sp.edit().putBoolean("aiReady", v).apply() }
     var aiModel: String
-        get() = s("aiModel", "claude-sonnet-5-5")
+        get() = s("aiModel")
         set(v) { sp.edit().putString("aiModel", v.trim()).apply() }
+
     var bizInfo: String
         get() = s("bizInfo")
         set(v) { sp.edit().putString("bizInfo", v).apply() }
@@ -46,12 +53,11 @@ class Store(ctx: Context) {
     var autoApply: Boolean
         get() = b("autoApply", false)
         set(v) { sp.edit().putBoolean("autoApply", v).apply() }
-
     var autoComment: Boolean
         get() = b("autoComment", false)
         set(v) { sp.edit().putBoolean("autoComment", v).apply() }
 
-    /** সব ক্যাম্পেইন মিলিয়ে দৈনিক সর্বোচ্চ বাজেট (মূল মুদ্রায়). 0 = বাজেট বাড়ানো নিষেধ */
+    /** Max total daily budget across all campaigns (main currency). 0 = budget increases not allowed */
     var dailyCap: Int
         get() = i("dailyCap", 0)
         set(v) { sp.edit().putInt("dailyCap", v).apply() }
