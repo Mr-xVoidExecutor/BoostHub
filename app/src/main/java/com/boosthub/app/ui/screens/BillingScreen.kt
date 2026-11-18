@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.boosthub.app.data.MetaApi
@@ -53,8 +54,8 @@ fun BillingScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
     }
 
     LaunchedEffect(Unit) {
-        if (s.fbToken.isNotBlank() && s.adAccount.isNotBlank()) load()
-        else msg = "Add your Facebook token and Ad Account ID in Settings first."
+        if (s.fbReady && s.adAccount.isNotBlank()) load()
+        else msg = "Connect your server in Settings first."
     }
 
     ScreenColumn(modifier, title = "Billing & Payments", onBack = onBack) {
@@ -180,7 +181,7 @@ fun BillingScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
             // 8. Business info
             item {
                 Panel {
-                    CardHeader(Icons.Rounded.Business, Color8, "Business information")
+                    CardHeader(Icons.Rounded.Business, Color(0xFF455A64), "Business information")
                     Body(x.bizName.ifBlank { "Name not available" })
                     if (x.bizAddress.isNotBlank()) Muted(x.bizAddress)
                     if (x.taxId.isNotBlank()) Muted("Tax ID: ${x.taxId}")
@@ -200,5 +201,3 @@ fun BillingScreen(modifier: Modifier = Modifier, onBack: (() -> Unit)? = null) {
         }
     }
 }
-
-private val Color8 = androidx.compose.ui.graphics.Color(0xFF455A64)
